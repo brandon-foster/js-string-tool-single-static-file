@@ -6,6 +6,9 @@ const operations = [
         return str.replaceAll(' ', '\n');
     },
     function replaceWithNewLine(str, a) {
+        if (a === '') {
+            return str;
+        }
         return str.replaceAll(a, '\n');
     },
     function jsonParseAndStringify(str) {
@@ -18,6 +21,9 @@ const operations = [
         }
     },
     function replace(str, a, b) {
+        if (b === '') {
+            return str;
+        }
         return str.replaceAll(a, b);
     },
     function trim(str) {
@@ -70,6 +76,19 @@ function makeUi($inputElem, $outputElem, $selectElem, $replaceSrcElem, $replaceD
             perform(clipboardText);
         });
         $(document).on('change', $selectElem, function() {
+            const opIndex = parseInt($selectElem.val());
+            stringMachine.setMode(opIndex);
+            if (stringMachine.getArgc() === 3) {
+                showReplaceElems();
+                $replaceSrcElem.focus();
+            }
+            else if (stringMachine.getArgc() === 2) {
+                showReplaceElems(true, 1);
+                $replaceSrcElem.focus();
+            }
+            else {
+                showReplaceElems(false);
+            }
             perform();
         });
         $(document).on('keyup', 'textarea, input', function() {
@@ -77,17 +96,6 @@ function makeUi($inputElem, $outputElem, $selectElem, $replaceSrcElem, $replaceD
         });
     }
     function perform(input = $inputElem.val(), replaceSrc = $replaceSrcElem.val(), replaceDest = $replaceDestElem.val()) {
-        const opIndex = parseInt($selectElem.val());
-        stringMachine.setMode(opIndex);
-        if (stringMachine.getArgc() === 3) {
-            showReplaceElems();
-        }
-        else if (stringMachine.getArgc() === 2) {
-            showReplaceElems(true, 1);
-        }
-        else {
-            showReplaceElems(false);
-        }
         const opFn = stringMachine.getOpFn();
         let output = opFn(input, replaceSrc, replaceDest);
         if (output === null) {
