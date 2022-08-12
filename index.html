@@ -12,7 +12,168 @@
         <br>
         <textarea id="input" rows="50" cols="60"></textarea>
         <textarea id="output" rows="50" cols="60"></textarea>
-        <script type="text/javascript" src="./js/lib/jquery-3.6.0.min.js"></script>
-        <script type="text/javascript" src="./js/index.js"></script>
+        <script type="text/javascript">
+            function log(str) {
+                console.log(str);
+            }
+            const operations = [
+                function javaOpts(str) {
+                    return str.replaceAll(' ', '\n');
+                },
+                function replaceWithNewLine(str, a) {
+                    if (a === '') {
+                        return str;
+                    }
+                    return str.replaceAll(a, '\n');
+                },
+                function jsonParseAndStringify(str) {
+                    try {
+                        const obj = JSON.parse(str);
+                        return JSON.stringify(obj, null, 4);
+                    }
+                    catch (e) {
+                        return null;
+                    }
+                },
+                function replace(str, a, b) {
+                    if (b === '') {
+                        return str;
+                    }
+                    return str.replaceAll(a, b);
+                },
+                function trim(str) {
+                    return str.trim();
+                },
+                function upper(str) {
+                    return str.toUpperCase();
+                },
+                function lower(str) {
+                    return str.toLowerCase();
+                },
+            ];
+            function makeOperationMachine() {
+                let opIndex = 0;
+                let argc = 1;
+                function setArgc(num) {
+                    argc = num;
+                }
+                return {
+                    getMode: function() {
+                        return opIndex;
+                    },
+                    setMode: function(num) {
+                        opIndex = num;
+                        if (this.getOpFn().name === 'replace') {
+                            setArgc(3);
+                        }
+                        else if (this.getOpFn().name === 'replaceWithNewLine') {
+                            setArgc(2);
+                        }
+                        else {
+                            setArgc(1);
+                        }
+                    },
+                    getArgc: function() {
+                        return argc;
+                    },
+                    getOpFn: function() {
+                        return operations[opIndex];
+                    },
+                    getOperations: function() {
+                        return operations;
+                    },
+                };
+            };
+            function makeUi(inputTextarea, outputTextarea, select, replaceSrcInput, replaceDestInput, stringMachine) {
+                function setupListeners() {
+                    function onPaste(e) {
+                        const clipboardText = e.clipboardData.getData('text/plain');
+                        perform(clipboardText);
+                    }
+                    inputTextarea.addEventListener('paste', onPaste);
+                    function onChange() {
+                        const opIndex = parseInt(select.value);
+                        stringMachine.setMode(opIndex);
+                        if (stringMachine.getArgc() === 3) {
+                            showReplaceElems();
+                            replaceSrcInput.focus();
+                        }
+                        else if (stringMachine.getArgc() === 2) {
+                            showReplaceElems(true, 1);
+                            replaceSrcInput.focus();
+                        }
+                        else {
+                            showReplaceElems(false);
+                        }
+                        perform();
+                    }
+                    select.addEventListener('change', onChange);
+                    function onKeyup() {
+                        perform();
+                    }
+                    inputTextarea.addEventListener('keyup', onKeyup);
+                    outputTextarea.addEventListener('keyup', onKeyup);
+                    replaceSrcInput.addEventListener('keyup', onKeyup);
+                    replaceDestInput.addEventListener('keyup', onKeyup);
+                }
+                function perform(input = inputTextarea.value, replaceSrc = replaceSrcInput.value, replaceDest = replaceDestInput.value) {
+                    const opFn = stringMachine.getOpFn();
+                    let output = opFn(input, replaceSrc, replaceDest);
+                    if (output === null) {
+                        output = 'cannot parse as JSON';
+                    }
+                    outputTextarea.value = output;
+                }
+                function showReplaceElems(doShow = true, quantity = 2) {
+                    if (doShow) {
+                        if (quantity === 1) {
+                            replaceSrcInput.style.display = 'block';
+                        }
+                        else {
+                            replaceSrcInput.style.display = 'block';
+                            replaceDestInput.style.display = 'block';
+                        }
+                    }
+                    else {
+                        replaceSrcInput.style.display = 'none';
+                        replaceDestInput.style.display = 'none';
+                    }
+                }
+                function populateSelectOptions() {
+                    function makeOptionElement(value, text) {
+                        const optionElement = document.createElement('option');
+                        optionElement.text = text;
+                        optionElement.value = value;
+                        return optionElement;
+                    }
+                    const operations = stringMachine.getOperations();
+                    for (let i = 0; i < operations.length; i++) {
+                        select.add(makeOptionElement(i, operations[i].name));
+                    }
+                }
+                return (function() {
+                    showReplaceElems(false);
+                    setupListeners();
+                    populateSelectOptions();
+                    return {
+                        getInputElem: function() {
+                            return inputTextarea;
+                        },
+                    };
+                }());
+            };
+            window.onload = function() {
+                function element(id) {
+                    return document.getElementById(id);
+                }
+                const inputTextarea = element('input');
+                const outputTextarea = element('output');
+                const select = element('select');
+                const replaceSrcInput = element('replaceSrc');
+                const replaceDestInput = element('replaceDest');
+                const ui = makeUi(inputTextarea, outputTextarea, select, replaceSrcInput, replaceDestInput, makeOperationMachine(operations));
+                ui.getInputElem().focus();
+            }
+        </script>
     </body>
 </html>
