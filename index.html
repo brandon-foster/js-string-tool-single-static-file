@@ -7,12 +7,26 @@
     </head>
     <body>
         <select id="select"></select>
-        <input id="replaceSrc" type="text" placeholder="from">
-        <input id="replaceDest" type="text" placeholder="to">
-        <br>
-        <textarea id="input" rows="50" cols="60"></textarea>
-        <textarea id="output" rows="50" cols="60"></textarea>
+        <div id="paramInputsContainer"></div>
+        <textarea id="input" rows="10" cols="200"></textarea>
+        <textarea id="output" rows="20" cols="200"></textarea>
         <script type="text/javascript">
+            function element(id) {
+                return document.getElementById(id);
+            }
+            function paramsFrom(fn) {
+                const fnString = fn.toString();
+                const start = fnString.indexOf('(') + 1;
+                const end = fnString.indexOf(')');
+                let result = fnString.substring(start, end);
+                result = result.replace(/\s+/g, '');
+                result = result.split(',');
+                return result;
+            }
+            function countParams(fn) {
+                const params = paramsFrom(fn);
+                return params.length;
+            }
             function log(str) {
                 console.log(str);
             }
@@ -20,11 +34,11 @@
                 function javaOpts(str) {
                     return str.replaceAll(' ', '\n');
                 },
-                function replaceWithNewLine(str, a) {
-                    if (a === '') {
+                function replaceWithNewLine(str, from) {
+                    if (from === '') {
                         return str;
                     }
-                    return str.replaceAll(a, '\n');
+                    return str.replaceAll(from, '\n');
                 },
                 function jsonParseAndStringify(str) {
                     try {
@@ -35,11 +49,11 @@
                         return null;
                     }
                 },
-                function replace(str, a, b) {
-                    if (b === '') {
+                function replace(str, from, to) {
+                    if (to === '') {
                         return str;
                     }
-                    return str.replaceAll(a, b);
+                    return str.replaceAll(from, to);
                 },
                 function trim(str) {
                     return str.trim();
@@ -54,24 +68,13 @@
             function makeOperationMachine() {
                 let opIndex = 0;
                 let argc = 1;
-                function setArgc(num) {
-                    argc = num;
-                }
                 return {
                     getMode: function() {
                         return opIndex;
                     },
                     setMode: function(num) {
                         opIndex = num;
-                        if (this.getOpFn().name === 'replace') {
-                            setArgc(3);
-                        }
-                        else if (this.getOpFn().name === 'replaceWithNewLine') {
-                            setArgc(2);
-                        }
-                        else {
-                            setArgc(1);
-                        }
+                        argc = countParams(this.getOpFn());
                     },
                     getArgc: function() {
                         return argc;
@@ -84,60 +87,43 @@
                     },
                 };
             };
-            function makeUi(inputTextarea, outputTextarea, select, replaceSrcInput, replaceDestInput, stringMachine) {
-                function setupListeners() {
+            function makeUi(config) {
+                const { inputTextarea, outputTextarea, select, paramInputsManager, stringMachine } = config;
+                function setupListeners(config) {
                     function onPaste(e) {
                         const clipboardText = e.clipboardData.getData('text/plain');
                         perform(clipboardText);
                     }
                     inputTextarea.addEventListener('paste', onPaste);
-                    function onChange() {
+                    function onChangeSelect() {
                         const opIndex = parseInt(select.value);
                         stringMachine.setMode(opIndex);
-                        if (stringMachine.getArgc() === 3) {
-                            showReplaceElems();
-                            replaceSrcInput.focus();
-                        }
-                        else if (stringMachine.getArgc() === 2) {
-                            showReplaceElems(true, 1);
-                            replaceSrcInput.focus();
-                        }
-                        else {
-                            showReplaceElems(false);
-                        }
+                        const opFn = stringMachine.getOpFn(opIndex);
+                        paramInputsManager.showParamInputsFor(opFn.name);
                         perform();
                     }
-                    select.addEventListener('change', onChange);
+                    select.addEventListener('change', onChangeSelect);
                     function onKeyup() {
                         perform();
                     }
                     inputTextarea.addEventListener('keyup', onKeyup);
                     outputTextarea.addEventListener('keyup', onKeyup);
-                    replaceSrcInput.addEventListener('keyup', onKeyup);
-                    replaceDestInput.addEventListener('keyup', onKeyup);
+                    const fnObjs = paramInputsManager.getFnObjs();
+                    for (const prop in fnObjs) {
+                        const inputs = fnObjs[prop].inputs;
+                        for (const input of inputs) {
+                            input.addEventListener('keyup', onKeyup);
+                        }
+                    }
                 }
-                function perform(input = inputTextarea.value, replaceSrc = replaceSrcInput.value, replaceDest = replaceDestInput.value) {
+                function perform(input = inputTextarea.value) {
                     const opFn = stringMachine.getOpFn();
-                    let output = opFn(input, replaceSrc, replaceDest);
+                    const paramValues = paramInputsManager.getParamValues();
+                    let output = opFn(input, ...paramValues);
                     if (output === null) {
                         output = 'cannot parse as JSON';
                     }
                     outputTextarea.value = output;
-                }
-                function showReplaceElems(doShow = true, quantity = 2) {
-                    if (doShow) {
-                        if (quantity === 1) {
-                            replaceSrcInput.style.display = 'block';
-                        }
-                        else {
-                            replaceSrcInput.style.display = 'block';
-                            replaceDestInput.style.display = 'block';
-                        }
-                    }
-                    else {
-                        replaceSrcInput.style.display = 'none';
-                        replaceDestInput.style.display = 'none';
-                    }
                 }
                 function populateSelectOptions() {
                     function makeOptionElement(value, text) {
@@ -151,28 +137,91 @@
                         select.add(makeOptionElement(i, operations[i].name));
                     }
                 }
-                return (function() {
-                    showReplaceElems(false);
-                    setupListeners();
-                    populateSelectOptions();
-                    return {
-                        getInputElem: function() {
-                            return inputTextarea;
-                        },
-                    };
-                }());
+                function makeArgInputElems(paramInputsManager) {
+                    const fnObjs = paramInputsManager.getFnObjs();
+                    for (const prop in fnObjs) {
+                        const paramInputsContainerElem = element('paramInputsContainer');
+                        const inputs = fnObjs[prop].inputs;
+                        for (let i = 0; i < inputs.length; i++) {
+                            paramInputsContainerElem.append(inputs[i]);
+                        }
+                    }
+                }
+                makeArgInputElems(paramInputsManager);
+                setupListeners(config);
+                populateSelectOptions();
+                return {
+                    getInputElem: function() {
+                        return inputTextarea;
+                    },
+                };
             };
             window.onload = function() {
-                function element(id) {
-                    return document.getElementById(id);
-                }
-                const inputTextarea = element('input');
-                const outputTextarea = element('output');
-                const select = element('select');
-                const replaceSrcInput = element('replaceSrc');
-                const replaceDestInput = element('replaceDest');
-                const ui = makeUi(inputTextarea, outputTextarea, select, replaceSrcInput, replaceDestInput, makeOperationMachine(operations));
-                ui.getInputElem().focus();
+                const paramInputsManager = (function makeParamInputsManager(ops) {
+                    let currentlyVisibleParamInputsFnName = null;
+                    function makeFnObj(fn, params, inputs) {
+                        return {
+                            fn: fn,
+                            params: params,
+                            inputs: inputs,
+                        };
+                    }
+                    const fnObjs = {};
+                    for (let i = 0; i < ops.length; i++) {
+                        const fn = ops[i];
+                        const params = paramsFrom(fn);
+                        const inputs = [];
+                        for (let j = 0; j < params.length; j++) {
+                            if (j != 0) {
+                                const input = document.createElement('input');
+                                input.id = `${fn.name}-${params[j]}`;
+                                input.placeholder = params[j];
+                                input.style.display = 'none';
+                                inputs.push(input);
+                            }
+                        }
+                        fnObjs[fn.name] = makeFnObj(fn, params, inputs);
+                    }
+                    function getFnObjs() {
+                        return fnObjs;
+                    }
+                    function showParamInputsFor(fnName) {
+                        if (null != currentlyVisibleParamInputsFnName) {
+                            const currInputs = fnObjs[currentlyVisibleParamInputsFnName].inputs;
+                            for (let i = 0; i < currInputs.length; i++) {
+                                currInputs[i].style.display = 'none';
+                            }
+                        }
+                        const inputs = fnObjs[fnName].inputs;
+                        for (let i = 0; i < inputs.length; i++) {
+                            inputs[i].style.display = 'inline';
+                        }
+                        currentlyVisibleParamInputsFnName = fnName;
+                    }
+                    function getParamValues() {
+                        const arr = [];
+                        if (null != currentlyVisibleParamInputsFnName) {
+                            const fnObj = fnObjs[currentlyVisibleParamInputsFnName];
+                            const inputs = fnObj.inputs;
+                            for (let i = 0; i < inputs.length; i++) {
+                                arr.push(inputs[i].value);
+                            }
+                        }
+                        return arr;
+                    }
+                    return {
+                        getFnObjs: getFnObjs,
+                        showParamInputsFor: showParamInputsFor,
+                        getParamValues: getParamValues,
+                    };
+                }(operations));
+                const ui = makeUi({
+                    inputTextarea: element('input'),
+                    outputTextarea: element('output'),
+                    select: element('select'),
+                    paramInputsManager: paramInputsManager,
+                    stringMachine: makeOperationMachine(operations),
+                }).getInputElem().focus();
             }
         </script>
     </body>
